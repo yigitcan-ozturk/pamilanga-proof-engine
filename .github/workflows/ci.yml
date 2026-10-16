@@ -1,22 +1,52 @@
-name: Go CI
+﻿name: Go CI
+
 on:
   push:
   pull_request:
+
 permissions:
   contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+
       - name: Format check
         run: test -z "$(gofmt -l cmd internal)"
+
       - name: Vet
         run: go vet ./...
+
       - name: Tests
-        run: go test -race -count=1 ./...
+        shell: bash
+        run: |
+          mkdir -p evidence
+          set -o pipefail
+          go test -race -count=1 -v ./... 2>&1 | tee evidence/go-test.log
+
       - name: Build
         run: go build ./cmd/proof-engine
+
+      - name: Generate evidence manifest
+        if: always()
+        shell: bash
+        run: |
+          if [ -f evidence/go-test.log ]; then
+            cd evidence
+            sha256sum go-test.log > SHA256SUMS
+          fi
+
+      - name: Upload test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: proof-engine-test-evidence
+          path: evidence/
+          if-no-files-found: warn
+          retention-days: 30
